@@ -30,6 +30,10 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, name: str, room: str = None, mode: str = "1v1", overs: int = 1):
         await websocket.accept()
         player_id = str(uuid.uuid4())
+        
+        # THE FIX: Tell the frontend its ID immediately so it knows it is the host
+        await websocket.send_json({"type": "connected", "player_id": player_id})
+        
         self.active_connections[player_id] = {"ws": websocket, "name": name, "room": room}
 
         if room:
