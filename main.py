@@ -1,45 +1,24 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from motor.motor_asyncio import AsyncIOMotorClient
+from supabase import create_client, Client
 import uuid
 import random
 import json
 import asyncio
 
-# Force TLS and skip certificate verification for the handshake
-MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash2003@cluster0.dh7k21g.mongodb.net/neon_cricket_db?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true"
-# Global database variable
-db = None
+# --- SUPABASE CONFIGURATION ---
+SUPABASE_URL = "https://hjtdvmvsblqjchwssnqd.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqdGR2bXZzYmxxamNod3NzbnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MDU4MzcsImV4cCI6MjA5NTM4MTgzN30.UFzCiZHFTCjV_N_J9byg9agRpwfF13pwQev8AgPrY60"
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global db
-    try:
-        print("Starting Database Connection...")
-        # tlsAllowInvalidCertificates=True forces the SSL handshake to ignore the certificate mismatch
-        client = AsyncIOMotorClient(MONGO_URI, tlsAllowInvalidCertificates=True)
-        
-        # Ping the server to verify the connection is actually open
-        await client.admin.command('ping')
-        db = client.neon_cricket_db 
-        print("Connected to MongoDB successfully!")
-        
-        # Create the index
-        await db.match_history.create_index("created_at", expireAfterSeconds=259200)
-        
-        yield
-        
-        client.close()
-    except Exception as e:
-        print(f"CRITICAL DATABASE ERROR: {e}")
-        # IMPORTANT: If the database fails, we print it but DON'T raise e
-        # This keeps the server alive so you can debug the UI even if the DB is down
-        print("Continuing without database connection.")
-        yield
+# Initialize the Supabase client
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("Successfully connected to Supabase!")
+except Exception as e:
+    print(f"CRITICAL ERROR initializing Supabase: {e}")
+    supabase = None
 
-# Inject the lifespan manager into FastAPI
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
