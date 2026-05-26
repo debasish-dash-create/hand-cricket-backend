@@ -1,5 +1,4 @@
-motor>=3.6.0
-pymongo>=4.9.0
+websockets
 fastapi
 uvicorn[standard]
-websockets
+supabase
