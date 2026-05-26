@@ -7,8 +7,8 @@ import random
 import json
 import asyncio
 
-# Replace YOUR_PASSWORD with the password you just created.
-MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash_2003@cluster0.dh7k21g.mongodb.net/?appName=Cluster0"
+# Add "?tls=true&tlsAllowInvalidCertificates=false" to the end
+MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash_2003@cluster0.dh7k21g.mongodb.net/neon_cricket_db?retryWrites=true&w=majority&tls=true"
 
 # Global database variable
 db = None
@@ -18,7 +18,9 @@ async def lifespan(app: FastAPI):
     global db
     try:
         print("Starting Database Connection...")
-        client = AsyncIOMotorClient(MONGO_URI)
+        # Add the tlsAllowInvalidCertificates=True flag for the connection
+        client = AsyncIOMotorClient(MONGO_URI, tlsAllowInvalidCertificates=True)
+        
         # Force a connection check
         await client.admin.command('ping')
         db = client.neon_cricket_db 
