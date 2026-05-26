@@ -7,9 +7,8 @@ import random
 import json
 import asyncio
 
-# Add "?tls=true&tlsAllowInvalidCertificates=false" to the end
-MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash2003@cluster0.dh7k21g.mongodb.net/neon_cricket_db?retryWrites=true&w=majority&tls=true"
-
+# Force TLS and skip certificate verification for the handshake
+MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash2003@cluster0.dh7k21g.mongodb.net/neon_cricket_db?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true"
 # Global database variable
 db = None
 
@@ -18,24 +17,26 @@ async def lifespan(app: FastAPI):
     global db
     try:
         print("Starting Database Connection...")
-        # Add the tlsAllowInvalidCertificates=True flag for the connection
+        # tlsAllowInvalidCertificates=True forces the SSL handshake to ignore the certificate mismatch
         client = AsyncIOMotorClient(MONGO_URI, tlsAllowInvalidCertificates=True)
         
-        # Force a connection check
+        # Ping the server to verify the connection is actually open
         await client.admin.command('ping')
         db = client.neon_cricket_db 
         print("Connected to MongoDB successfully!")
         
-        # 72 hours = 259,200 seconds
+        # Create the index
         await db.match_history.create_index("created_at", expireAfterSeconds=259200)
         
         yield
         
         client.close()
-        print("Disconnected from MongoDB.")
     except Exception as e:
-        print(f"CRITICAL ERROR IN LIFESPAN: {e}")
-        raise e  # This will force the process to exit with the status 3
+        print(f"CRITICAL DATABASE ERROR: {e}")
+        # IMPORTANT: If the database fails, we print it but DON'T raise e
+        # This keeps the server alive so you can debug the UI even if the DB is down
+        print("Continuing without database connection.")
+        yield
 
 # Inject the lifespan manager into FastAPI
 app = FastAPI(lifespan=lifespan)
