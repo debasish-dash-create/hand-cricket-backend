@@ -16,21 +16,24 @@ db = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global db
-    # Connect to the cluster
-    client = AsyncIOMotorClient(MONGO_URI)
-    # Target our specific game database (creates it automatically if it doesn't exist)
-    db = client.neon_cricket_db 
-    print("Connected to MongoDB!")
-    
-    # THE MAGIC: Create a TTL (Time-To-Live) index for the 72-hour auto-delete.
-    # 72 hours = 259,200 seconds. MongoDB will silently clean up old matches in the background.
-    await db.match_history.create_index("created_at", expireAfterSeconds=259200)
-    
-    yield
-    
-    # Clean up the connection when the server shuts down
-    client.close()
-    print("Disconnected from MongoDB.")
+    try:
+        print("Starting Database Connection...")
+        client = AsyncIOMotorClient(MONGO_URI)
+        # Force a connection check
+        await client.admin.command('ping')
+        db = client.neon_cricket_db 
+        print("Connected to MongoDB successfully!")
+        
+        # 72 hours = 259,200 seconds
+        await db.match_history.create_index("created_at", expireAfterSeconds=259200)
+        
+        yield
+        
+        client.close()
+        print("Disconnected from MongoDB.")
+    except Exception as e:
+        print(f"CRITICAL ERROR IN LIFESPAN: {e}")
+        raise e  # This will force the process to exit with the status 3
 
 # Inject the lifespan manager into FastAPI
 app = FastAPI(lifespan=lifespan)
