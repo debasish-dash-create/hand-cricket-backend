@@ -1,11 +1,39 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from motor.motor_asyncio import AsyncIOMotorClient
 import uuid
 import random
 import json
 import asyncio
 
-app = FastAPI()
+# Replace YOUR_PASSWORD with the password you just created.
+MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash_2003@cluster0.dh7k21g.mongodb.net/?appName=Cluster0"
+
+# Global database variable
+db = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db
+    # Connect to the cluster
+    client = AsyncIOMotorClient(MONGO_URI)
+    # Target our specific game database (creates it automatically if it doesn't exist)
+    db = client.neon_cricket_db 
+    print("Connected to MongoDB!")
+    
+    # THE MAGIC: Create a TTL (Time-To-Live) index for the 72-hour auto-delete.
+    # 72 hours = 259,200 seconds. MongoDB will silently clean up old matches in the background.
+    await db.match_history.create_index("created_at", expireAfterSeconds=259200)
+    
+    yield
+    
+    # Clean up the connection when the server shuts down
+    client.close()
+    print("Disconnected from MongoDB.")
+
+# Inject the lifespan manager into FastAPI
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -106,9 +134,10 @@ class ConnectionManager:
 
     async def setup_1v1_match(self, p1: str, p2: str, overs: int):
         toss_winner = random.choice(["p1", "p2"])
-        self.matches_1v1[p1] = {"opp": p2, "role": "p1", "move": None}
-        self.matches_1v1[p2] = {"opp": p1, "role": "p2", "move": None}
-
+        # Track the overs and initialize rematch as False
+        self.matches_1v1[p1] = {"opp": p2, "role": "p1", "move": None, "overs": overs, "rematch": False}
+        self.matches_1v1[p2] = {"opp": p1, "role": "p2", "move": None, "overs": overs, "rematch": False}
+        
         await self.active_connections[p1]["ws"].send_json({
             "type": "match_found", "player_id": "p1", "opp_name": self.active_connections[p2]["name"],
             "toss_winner": "p1" if toss_winner == "p1" else "p2", "overs": overs
@@ -376,6 +405,42 @@ async def websocket_endpoint(websocket: WebSocket, name: str = "Guest", room: st
                         await manager.active_connections[p1_id]["ws"].send_json(result)
                         await manager.active_connections[p2_id]["ws"].send_json(result)
 
+                # --- NEW REMATCH LOGIC GOES HERE ---
+                elif msg_type == "rematch_request":
+                    match_data = manager.matches_1v1.get(player_id)
+                    if match_data:
+                        opp_id = match_data["opp"]
+                        match_data["rematch"] = True
+                        
+                        opp_match_data = manager.matches_1v1.get(opp_id)
+                        if opp_match_data and opp_match_data.get("rematch"):
+                            # Both players clicked Rematch! Reset state and trigger match_found again
+                            match_data["rematch"] = False
+                            opp_match_data["rematch"] = False
+                            
+                            overs = match_data.get("overs", 1)
+                            new_toss_winner = random.choice(["p1", "p2"])
+                            
+                            await websocket.send_json({
+                                "type": "rematch_accepted"
+                            })
+                            await manager.active_connections[opp_id]["ws"].send_json({
+                                "type": "rematch_accepted"
+                            })
+                            
+                            # Send them new match configurations
+                            await websocket.send_json({
+                                "type": "match_found", "player_id": match_data["role"], 
+                                "opp_name": manager.active_connections[opp_id]["name"],
+                                "toss_winner": match_data["role"] if new_toss_winner == match_data["role"] else opp_match_data["role"], 
+                                "overs": overs
+                            })
+                            await manager.active_connections[opp_id]["ws"].send_json({
+                                "type": "match_found", "player_id": opp_match_data["role"], 
+                                "opp_name": manager.active_connections[player_id]["name"],
+                                "toss_winner": opp_match_data["role"] if new_toss_winner == opp_match_data["role"] else match_data["role"], 
+                                "overs": overs
+                            })
     except WebSocketDisconnect:
         opp_id = manager.disconnect(player_id)
         if opp_id and opp_id in manager.active_connections:
