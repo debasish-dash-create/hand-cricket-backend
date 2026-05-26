@@ -8,7 +8,7 @@ import json
 import asyncio
 
 # Add "?tls=true&tlsAllowInvalidCertificates=false" to the end
-MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash_2003@cluster0.dh7k21g.mongodb.net/neon_cricket_db?retryWrites=true&w=majority&tls=true"
+MONGO_URI = "mongodb+srv://dchoudhurydebasish_db_user:Dash2003@cluster0.dh7k21g.mongodb.net/neon_cricket_db?retryWrites=true&w=majority&tls=true"
 
 # Global database variable
 db = None
